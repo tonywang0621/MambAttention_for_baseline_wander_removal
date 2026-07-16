@@ -19,9 +19,26 @@ import numpy as np
 from utils.metrics import MAD, SSD, PRD, COS_SIM
 from utils import visualization as vs
 import argparse
-from os.path import isfile
 import os
 os.makedirs('score',exist_ok=True)
+
+
+def load_test_result(experiment, n_type, nv):
+    candidates = [
+        f'results/{experiment}_{n_type}_nv{nv}.pkl',
+        f'results/test_results_{n_type}_{experiment}_nv{nv}.pkl',
+    ]
+
+    for path in candidates:
+        if os.path.isfile(path):
+            with open(path, 'rb') as input:
+                return pickle.load(input)
+
+    raise FileNotFoundError(
+        'Cannot find test result file. Run main.py --test first, or check the experiment/noise type.\n'
+        + 'Tried:\n'
+        + '\n'.join(f'  - {path}' for path in candidates)
+    )
 
 
 if __name__ == "__main__":
@@ -41,10 +58,8 @@ if __name__ == "__main__":
 
     for experiment in Exp_names:
     # Load Results SEMamba
-        with open(f'results/test_results_{n_type}_' + experiment + '_nv1.pkl', 'rb') as input:
-            test_SEMamba_nv1 = pickle.load(input)
-        with open(f'results/test_results_{n_type}_' + experiment + '_nv2.pkl', 'rb') as input:
-            test_SEMamba_nv2 = pickle.load(input)
+        test_SEMamba_nv1 = load_test_result(experiment, n_type, 1)
+        test_SEMamba_nv2 = load_test_result(experiment, n_type, 2)
     
         test_SEMamba = [np.concatenate((test_SEMamba_nv1[0], test_SEMamba_nv2[0])),
                      np.concatenate((test_SEMamba_nv1[1], test_SEMamba_nv2[1])),
