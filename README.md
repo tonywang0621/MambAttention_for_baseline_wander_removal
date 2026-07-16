@@ -120,6 +120,18 @@ data/
   dataset_bw_nv2.pkl
 ```
 
+如果你是從專案根目錄執行，資料夾應該是：
+
+```text
+MambAttention_for_baseline_wander_removal/
+  main.py
+  config/
+    MambAttention_ECG.yaml
+  data/
+    dataset_bw_nv1.pkl
+    dataset_bw_nv2.pkl
+```
+
 如果你使用其他雜訊類型，檔名會依 `--n_type` 改變，例如：
 
 ```text
@@ -152,6 +164,7 @@ python main.py --n_type bw --config config/MambAttention_ECG.yaml --data_dir /pa
 使用新架構的設定檔：
 
 ```bash
+cd /path/to/MambAttention_for_baseline_wander_removal
 python main.py --n_type bw --config config/MambAttention_ECG.yaml
 ```
 
@@ -253,7 +266,7 @@ model:
 ## 專案結構
 
 ```text
-MECG-E-practice/
+MambAttention_for_baseline_wander_removal/
   main.py
   pipeline.py
   models/

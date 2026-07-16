@@ -36,7 +36,11 @@ torch.manual_seed(3407)
 
 if __name__ == "__main__":
     project_root = Path(__file__).resolve().parent
-    default_data_dir = project_root.parent / "data"
+    data_dir_candidates = [
+        project_root / "data",
+        project_root.parent / "data",
+    ]
+    default_data_dir = next((path for path in data_dir_candidates if path.is_dir()), data_dir_candidates[0])
 
     parser = argparse.ArgumentParser(description="MECGE for ECG")
     parser.add_argument("--config", type=str, default="config/MECGE.yaml") #

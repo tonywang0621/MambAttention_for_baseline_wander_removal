@@ -373,7 +373,7 @@ setup(
         "ninja",
         "einops",
         "triton",
-        "transformers",
+        "transformers==4.39.3",
         # "causal_conv1d>=1.4.0",
     ],
 )
