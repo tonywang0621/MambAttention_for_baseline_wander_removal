@@ -100,16 +100,17 @@ def mag_pha_istft(mag, pha, n_fft, hop_size, win_size, compress_factor=1.0, cent
     return wav
 
 class MambaBlock(nn.Module):
-    def __init__(self, in_channels, n_layer=1, bidirectional=False):
+    def __init__(self, in_channels, n_layer=1, bidirectional=False, d_state=16, d_conv=4, expand=4, norm_epsilon=1e-5):
         super(MambaBlock, self).__init__()
+        self.bidirectional = bidirectional
         self.forward_blocks = nn.ModuleList([])
         for i in range(n_layer):
             self.forward_blocks.append(
                 Block(
                     in_channels,
-                    mixer_cls=partial(Mamba, layer_idx=i, d_state=16, d_conv=4, expand=4, use_fast_path=True),
+                    mixer_cls=partial(Mamba, layer_idx=i, d_state=d_state, d_conv=d_conv, expand=expand, use_fast_path=True),
                     mlp_cls=nn.Identity,
-                    norm_cls=partial(RMSNorm, eps=1e-5),
+                    norm_cls=partial(RMSNorm, eps=norm_epsilon),
                     fused_add_norm=False,
                 )
             )
@@ -119,9 +120,9 @@ class MambaBlock(nn.Module):
                 self.backward_blocks.append(
                         Block(
                         in_channels,
-                        mixer_cls=partial(Mamba, layer_idx=i, d_state=16, d_conv=4, expand=4, use_fast_path=True),
+                        mixer_cls=partial(Mamba, layer_idx=i, d_state=d_state, d_conv=d_conv, expand=expand, use_fast_path=True),
                         mlp_cls=nn.Identity,
-                        norm_cls=partial(RMSNorm, eps=1e-5),
+                        norm_cls=partial(RMSNorm, eps=norm_epsilon),
                         fused_add_norm=False,
                     )
                 )
@@ -135,7 +136,7 @@ class MambaBlock(nn.Module):
             forward_f, for_residual = block(forward_f, for_residual, inference_params=None)
         residual = (forward_f + for_residual) if for_residual is not None else forward_f
 
-        if self.backward_blocks is not None:
+        if self.bidirectional:
             back_residual = None
             backward_f = torch.flip(input, [1])
             for block in self.backward_blocks:
@@ -144,8 +145,27 @@ class MambaBlock(nn.Module):
 
             back_residual = torch.flip(back_residual, [1])
             residual = torch.cat([residual, back_residual], -1)
-        
+
         return residual
+
+
+class AttentionModule(nn.Module):
+    def __init__(self, dim, n_head=8, dropout=0.0):
+        super(AttentionModule, self).__init__()
+        self.layernorm = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(dim, n_head, dropout=dropout, batch_first=True)
+
+    def forward(self, x, attn_mask=None, key_padding_mask=None):
+        x = self.layernorm(x)
+        x, _ = self.attn(
+            x,
+            x,
+            x,
+            attn_mask=attn_mask,
+            key_padding_mask=key_padding_mask,
+            need_weights=False,
+        )
+        return x
     
 
 class DenseBlock(nn.Module):
@@ -261,44 +281,57 @@ class ComplexDecoder(nn.Module):
         return x
 
 
-class TSMambaBlock(nn.Module):
+class MambAttentionBlock(nn.Module):
     def __init__(self, h):
-        super(TSMambaBlock, self).__init__()
+        super(MambAttentionBlock, self).__init__()
         self.h = h
+        self.dense_channel = h.dense_channel
+        self.attention_heads = h.get('attention_heads', 8)
+        self.d_state = h.get('d_state', 16)
+        self.d_conv = h.get('d_conv', 4)
+        self.expand = h.get('expand', 4)
+        self.norm_epsilon = h.get('norm_epsilon', 1e-5)
 
-        #self.time_mamba = Mamba(d_model=h.dense_channel,  d_state=16, d_conv=4, expand=2)
-        #self.freq_mamba = Mamba(d_model=h.dense_channel,  d_state=16, d_conv=4, expand=2)
-
-        self.time_mamba = MambaBlock(in_channels=h.dense_channel, n_layer=1, bidirectional=True)
-        self.freq_mamba = MambaBlock(in_channels=h.dense_channel, n_layer=1, bidirectional=True)
+        self.time_mamba = MambaBlock(
+            in_channels=self.dense_channel,
+            n_layer=1,
+            bidirectional=True,
+            d_state=self.d_state,
+            d_conv=self.d_conv,
+            expand=self.expand,
+            norm_epsilon=self.norm_epsilon,
+        )
+        self.freq_mamba = MambaBlock(
+            in_channels=self.dense_channel,
+            n_layer=1,
+            bidirectional=True,
+            d_state=self.d_state,
+            d_conv=self.d_conv,
+            expand=self.expand,
+            norm_epsilon=self.norm_epsilon,
+        )
+        self.attention = AttentionModule(dim=self.dense_channel, n_head=self.attention_heads)
 
         self.tlinear = nn.ConvTranspose1d(
-            h.dense_channel * 2, h.dense_channel, 1, stride=1
+            self.dense_channel * 2, self.dense_channel, 1, stride=1
         )
-        if self.h.get('fmamba',True):
-            self.flinear = nn.ConvTranspose1d(
-                h.dense_channel * 2, h.dense_channel, 1, stride=1
-            )
+        self.flinear = nn.ConvTranspose1d(
+            self.dense_channel * 2, self.dense_channel, 1, stride=1
+        )
 
     def forward(self, x):
         b, c, t, f = x.size()
         x = x.permute(0, 3, 2, 1).contiguous().view(b*f, t, c)
-        #x = self.time_conformer(x) + x
-        #print(x.shape)
-        #print(self.time_mamba(x).shape)
-        #print(self.tlinear( self.time_mamba(x) ).shape)
+        x = self.attention(x) + x
         x = self.tlinear( self.time_mamba(x).permute(0,2,1) ).permute(0,2,1) + x
-        x = x.view(b, f, t, c)
-        #print(x.shape)
-        if self.h.get('fmamba',True):
-            x = x.permute(0, 2, 1, 3).contiguous().view(b*t, f, c)
-            x = self.flinear( self.freq_mamba(x).permute(0,2,1) ).permute(0,2,1) + x
-            
-            #x = self.freq_conformer(x) + x
-            x = x.view(b, t, f, c).permute(0, 2, 1, 3)
-        x = x.permute(0, 3, 2, 1)
-        #fesfesf
+        x = x.view(b, f, t, c).permute(0, 2, 1, 3).contiguous().view(b*t, f, c)
+        x = self.attention(x) + x
+        x = self.flinear( self.freq_mamba(x).permute(0,2,1) ).permute(0,2,1) + x
+        x = x.view(b, t, f, c).permute(0, 3, 1, 2)
         return x
+
+
+TSMambaBlock = MambAttentionBlock
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -320,7 +353,7 @@ class MECGE(nn.Module):
 
         self.TSMamba = nn.ModuleList([])
         for i in range(h.num_tscblocks):
-            self.TSMamba.append(TSMambaBlock(h))
+            self.TSMamba.append(MambAttentionBlock(h))
         
         self.mask_decoder = MaskDecoder(h, out_channel=1)
         if self.fea=='cpx':

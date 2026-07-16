@@ -1,103 +1,252 @@
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/mecg-e-mamba-based-ecg-enhancer-for-baseline/ecg-denoising-on-qt-nstdb)](https://paperswithcode.com/sota/ecg-denoising-on-qt-nstdb?p=mecg-e-mamba-based-ecg-enhancer-for-baseline)
+# MambAttention for ECG Baseline Wander Removal
 
-# MECG-E: Mamba-based ECG Enhancer for Baseline Wander Removal
+這個專案保留 `MECG-E-practice` 原本的資料格式、訓練流程與輸出格式，但把模型核心改成接近 `MambAttention` 的架構：
 
-### Abstract
-Electrocardiogram (ECG) is an important non-invasive method for diagnosing cardiovascular disease. However, ECG signals are susceptible to noise contamination, such as electrical interference or signal wandering, which reduces diagnostic accuracy. Various ECG denoising methods have been proposed, but most existing methods yield suboptimal performance under very noisy conditions or require several steps during inference, leading to latency during online processing. In this paper, we propose a novel ECG denoising model, namely Mamba-based ECG Enhancer (MECG-E), which leverages the Mamba architecture known for its fast inference and outstanding nonlinear mapping capabilities. Experimental results indicate that MECG-E surpasses several well-known existing models across multiple metrics under different noise conditions. Additionally, MECG-E requires less inference time than state-of-the-art diffusion-based ECG denoisers, demonstrating the model's functionality and efficiency. [[paper](https://arxiv.org/abs/2409.18828)]
+- 輸入資料仍使用 `data/dataset_{noise}_nv{1,2}.pkl`
+- 訓練與測試入口仍是 `main.py`
+- 輸出仍存成 `results/{config}_{noise}_nv{1,2}.pkl`
+- 新模型設定檔是 `config/MambAttention_ECG.yaml`
 
-<p align="center">
-<img src="figs/architecture.png"/>
-</p>
+## 系統需求
 
-## Pre-requisites
-1. Clone this repository.
-2. Install python requirements. Please refer to [Installation](#installation).
-3. Download and extract the [ECG data](https://drive.google.com/file/d/19qOwywAoxreEv4xONTk-smQdo-ZdoPBc/view?usp=sharing). Clean ECG records from the [QT Database](https://ieeexplore.ieee.org/document/648140) were corrupted using noise profiles from the MIT-BIH Noise Stress Test Database ([NSTDB](https://physionet.org/content/nstdb/1.0.0/)). Dataset preprocessing follows the procedure outlined in [DeepFilter](https://github.com/fperdigon/DeepFilter/tree/master/Data_Preparation).
+建議使用 Linux 或 WSL2。此專案使用 Mamba CUDA extension，實務上需要 NVIDIA GPU。
 
-## Installation
+建議版本：
 
-#### Requirement
-    * Python >= 3.9
-    * CUDA >= 12.0
-    * PyTorch == 2.2.2
-
-#### Environment installation
-1. **Create a Python environment with Conda:** It is strongly recommended to set up a dedicated Python environment to manage dependencies effectively and prevent conflicts.
-```bash
-conda create --name mecge python=3.9
-conda activate mecge
+```text
+Python: 3.9 或 3.10
+CUDA Toolkit: >= 12.0，建議 12.1 或 12.2
+PyTorch: 2.2.2
+torchaudio: 2.2.2
 ```
 
-2. **Install PyTorch:** Install PyTorch 2.2.2 from the official PyTorch website. Refer to the [PyTorch Previous Versions](https://pytorch.org/get-started/previous-versions/) section for installation commands tailored to your system configuration (e.g., operating system, CUDA version).
+先確認 GPU 與 CUDA 在目前環境可用：
 
-3. **Install Required Packages:** Once the environment is set up and PyTorch is installed, install the necessary Python packages listed in `requirements.txt`.
+```bash
+nvidia-smi
+nvcc -V
+```
+
+如果 `nvidia-smi` 或 `nvcc -V` 找不到，請先修好 NVIDIA driver / CUDA Toolkit / WSL GPU 設定，再安裝 Python 套件。
+
+## 建立 Conda 環境
+
+在 Anaconda Prompt、Miniconda shell，或 WSL 裡執行：
+
+```bash
+conda create -n mambattention-ecg python=3.10 -y
+conda activate mambattention-ecg
+```
+
+升級基本安裝工具：
+
+```bash
+python -m pip install --upgrade pip setuptools wheel
+```
+
+## 安裝 PyTorch
+
+CUDA 12.1 環境建議使用：
+
+```bash
+pip install torch==2.2.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu121
+```
+
+安裝後確認 PyTorch 看得到 GPU：
+
+```bash
+python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
+```
+
+`torch.cuda.is_available()` 應該要輸出 `True`。
+
+## 安裝 Python 套件
+
+進入專案資料夾：
+
+```bash
+cd /mnt/c/Users/中研院/MambAttention_for_baseline_wander_removal/MECG-E-practice
+```
+
+安裝 requirements：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Install the Mamba Package:** Navigate to the mamba directory and install the package. This step ensures that all required components are properly installed.
+## 安裝 Mamba
+
+此專案內含一份 local mamba source，請在同一個 conda 環境中安裝：
 
 ```bash
 cd mamba
 pip install .
+cd ..
 ```
 
-Note: Installing the package from the provided source (`mamba`) is recommended to prevent dependency issues and ensure compatibility across various packages. Follow these instructions carefully to avoid potential conflicts.
+如果安裝 Mamba 時失敗，最常見原因是：
 
-## Code Usage
-- ### Training
+- `nvcc` 不存在或版本太舊
+- PyTorch CUDA 版本與本機 CUDA Toolkit 不相容
+- 沒有安裝 `ninja`、`packaging`、`wheel`
+- 目前環境不是 NVIDIA GPU/CUDA 環境
 
-1. **Set Hyperparameters:** Update the hyperparameters in the configuration file (.yaml) as needed.
-2. **Run the Code:** Execute the following example command (e.g., the configuration file is `MECGE_phase.yaml`):
-```bash
-python main.py --n_type bw --config config/MECGE_phase.yaml
-```
-
-You can download the pre-trained model weights from this [link](https://drive.google.com/file/d/17qAyAJIw0zPFJwtkSsfwB7GeOsylq2_P/view?usp=sharing). Create a folder named model_weight and place the downloaded weight file inside it. We provide the best-performing models for various input features, with their results summarized in the table below.
-
-| Model | Input | Loss function | SSD (au) $\downarrow$ | MAD (au) $\downarrow$ | PRD (%) $\downarrow$ | Cos_Sim $\uparrow$ |
-|---    |---    |---            |---  |---  |---  |---      |
-| <sub>MECG-E</sub> | <sub>Waveform</sub>   | $`\mathcal{L}_{time}`$</sub> | <sub>3.906 (6.662) | <sub>0.360 (0.281)</sub> | <sub>38.949 (22.947)</sub> | <sub>0.929 (0.081)</sub> |
-| <sub>MECG-E</sub> | <sub>Complex</sub>    | $`\mathcal{L}_{time}`$+$`\mathcal{L}_{cpx}`$+$`\mathcal{L}_{con}`$ | <sub>3.891 (7.909)</sub> | <sub>0.326 (0.270)</sub> | <sub>37.734 (23.098)</sub> | <sub>0.931 (0.084)</sub> |
-| <sub>MECG-E</sub> | <sub>Mag.+Phase</sub> | $`\mathcal{L}_{time}`$+$`\mathcal{L}_{cpx}`$+$`\mathcal{L}_{con}`$ | <sub>3.445 (6.493)</sub> | <sub>0.319 (0.252)</sub> | <sub>37.613 (22.389)</sub> | <sub>0.936 (0.077)</sub> |
-
-- ### Testing
-Training the model from scratch will automatically include the testing stage. For cases where the pretrained weights are already available (e.g., downloaded the pretrained weights), and retraining is not required, use the following command (e.g., the configuration file is `MECGE_phase.yaml`):
+可以先確認：
 
 ```bash
-python main.py --n_type bw --config config/MECGE_phase.yaml --test
+python -c "import torch; print(torch.__version__, torch.version.cuda)"
+nvcc -V
 ```
 
-- ### Evaluate the Result
-Evaluate the result of multiple configuration files (e.g., `MECGE_phase.yaml` and `MECGE_complex.yaml`).
+## 資料準備
+
+請把資料放在 `data/` 底下。程式會依照 noise type 與 noise version 讀取 pkl：
+
+```text
+data/
+  dataset_bw_nv1.pkl
+  dataset_bw_nv2.pkl
+```
+
+如果你使用其他雜訊類型，檔名會依 `--n_type` 改變，例如：
+
+```text
+data/dataset_em_nv1.pkl
+data/dataset_em_nv2.pkl
+data/dataset_ma_nv1.pkl
+data/dataset_ma_nv2.pkl
+```
+
+每個 pkl 內容必須是：
+
+```python
+[X_train, y_train, X_test, y_test]
+```
+
+其中：
+
+- `X_train`, `X_test`: 含 baseline wander 的 noisy ECG
+- `y_train`, `y_test`: 對應的 clean ECG
+- 程式會把資料轉成 PyTorch tensor，並轉為 `[batch, channel, length]`
+
+## 訓練 MambAttention ECG 模型
+
+使用新架構的設定檔：
+
 ```bash
-python cal_metrics.py --experiments MECGE_phase MECGE_complex
+python main.py --n_type bw --config config/MambAttention_ECG.yaml
 ```
 
-Note: If you download the data from our provided [link](https://drive.google.com/file/d/19qOwywAoxreEv4xONTk-smQdo-ZdoPBc/view?usp=sharing), you can directly reference the results listed in Table below without additional training.
+這會依序處理：
 
-<p align="center">
-<img src="figs/result.png"/>
-</p>
-
-
-## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
-
-
-## Citation
-
-If you find the code helpful, please cite the following article.
-```
-@article{hung2024mecg,
-  title={MECG-E: Mamba-based ECG Enhancer for Baseline Wander Removal},
-  author={Hung, Kuo-Hsuan and Wang, Kuan-Chen and Liu, Kai-Chun and Chen, Wei-Lun and Lu, Xugang and Tsao, Yu and Lin, Chii-Wann},
-  journal={arXiv preprint arXiv:2409.18828},
-  year={2024}}
-
+```text
+data/dataset_bw_nv1.pkl
+data/dataset_bw_nv2.pkl
 ```
 
-## Acknowledgments
-* We acknowledge that our code is heavily based on implementations provided in several GitHub repositories ([DeepFilter](https://github.com/fperdigon/DeepFilter/tree/master/Data_Preparation), [DeScoD-ECG](https://github.com/HuayuLiArizona/Score-based-ECG-Denoising) and [SEMamba](https://github.com/RoyChao19477/SEMamba)), and we extend our gratitude to the respective authors for making their work publicly available.
-* [Bio-ASP Lab](https://bio-asplab.citi.sinica.edu.tw), CITI, Academia Sinica, Taipei, Taiwan
+訓練出的權重會存到：
+
+```text
+model_weight/MambAttention_ECG_bw_nv1_weights.pth
+model_weight/MambAttention_ECG_bw_nv2_weights.pth
+```
+
+測試結果會存到：
+
+```text
+results/MambAttention_ECG_bw_nv1.pkl
+results/MambAttention_ECG_bw_nv2.pkl
+```
+
+結果 pkl 內容仍是：
+
+```python
+[X_test, y_test, y_pred]
+```
+
+## 只做測試
+
+如果你已經有訓練好的權重，放在 `model_weight/` 底下後執行：
+
+```bash
+python main.py --n_type bw --config config/MambAttention_ECG.yaml --test
+```
+
+程式會讀取：
+
+```text
+model_weight/MambAttention_ECG_bw_nv1_weights.pth
+model_weight/MambAttention_ECG_bw_nv2_weights.pth
+```
+
+並輸出：
+
+```text
+results/MambAttention_ECG_bw_nv1.pkl
+results/MambAttention_ECG_bw_nv2.pkl
+```
+
+## 計算指標
+
+產生 results 後可用：
+
+```bash
+python cal_metrics.py --experiments MambAttention_ECG
+```
+
+## 重要設定
+
+主要設定在 `config/MambAttention_ECG.yaml`：
+
+```yaml
+train:
+  epochs: 30
+  batch_size: 96
+  lr: 1.0e-4
+
+model:
+  fea: "pha"
+  dense_channel: 64
+  num_tscblocks: 4
+  attention_heads: 8
+  d_state: 16
+  d_conv: 4
+  expand: 4
+  n_fft: 64
+  hop_size: 8
+  win_size: 64
+  loss_fn: "time+com+con"
+```
+
+如果 GPU 記憶體不足，優先降低：
+
+```yaml
+train:
+  batch_size: 48
+```
+
+或降低：
+
+```yaml
+model:
+  dense_channel: 32
+```
+
+## 專案結構
+
+```text
+MECG-E-practice/
+  main.py
+  pipeline.py
+  models/
+    MECGE.py
+  config/
+    MambAttention_ECG.yaml
+  data/
+    dataset_bw_nv1.pkl
+    dataset_bw_nv2.pkl
+  model_weight/
+  results/
+  mamba/
+  requirements.txt
+```

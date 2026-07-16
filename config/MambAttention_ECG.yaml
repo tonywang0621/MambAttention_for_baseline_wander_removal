@@ -1,0 +1,24 @@
+# MambAttention architecture with the MECG-E data and result pipeline.
+
+train:
+  epochs: 30
+  batch_size: 96
+  lr: 1.0e-4
+
+model:
+  fea: "pha"
+  norm: False
+  dense_channel: 64
+  compress_factor: 0.3
+  num_tscblocks: 4
+  d_state: 16
+  d_conv: 4
+  expand: 4
+  norm_epsilon: 1.0e-5
+  attention_heads: 8
+  sampling_rate: 16000
+  n_fft: 64
+  hop_size: 8
+  win_size: 64
+  beta: 2
+  loss_fn: "time+com+con"
