@@ -100,7 +100,19 @@ nvcc -V
 
 ## 資料準備
 
-請把資料放在 `data/` 底下。程式會依照 noise type 與 noise version 讀取 pkl：
+此專案使用跟 `C:\Users\中研院\MECG-E` 一樣的資料格式與輸出格式，但資料請放在本專案外層資料夾：
+
+```text
+C:\Users\中研院\MambAttention_for_baseline_wander_removal\data
+```
+
+在 WSL 中對應為：
+
+```text
+/mnt/c/Users/中研院/MambAttention_for_baseline_wander_removal/data
+```
+
+也就是說，新模型會處理跟 `C:\Users\中研院\MECG-E` 相同格式的 dataset pkl，但不會去讀 `MECG-E` 資料夾。程式會依照 noise type 與 noise version 讀取 pkl：
 
 ```text
 data/
@@ -115,6 +127,12 @@ data/dataset_em_nv1.pkl
 data/dataset_em_nv2.pkl
 data/dataset_ma_nv1.pkl
 data/dataset_ma_nv2.pkl
+```
+
+如果你的資料放在其他位置，可以用 `--data_dir` 指定：
+
+```bash
+python main.py --n_type bw --config config/MambAttention_ECG.yaml --data_dir /path/to/data
 ```
 
 每個 pkl 內容必須是：
@@ -140,8 +158,8 @@ python main.py --n_type bw --config config/MambAttention_ECG.yaml
 這會依序處理：
 
 ```text
-data/dataset_bw_nv1.pkl
-data/dataset_bw_nv2.pkl
+/mnt/c/Users/中研院/MambAttention_for_baseline_wander_removal/data/dataset_bw_nv1.pkl
+/mnt/c/Users/中研院/MambAttention_for_baseline_wander_removal/data/dataset_bw_nv2.pkl
 ```
 
 訓練出的權重會存到：

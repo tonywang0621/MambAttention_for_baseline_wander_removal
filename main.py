@@ -15,6 +15,7 @@ import _pickle as pickle
 from datetime import datetime
 import time
 import numpy as np
+from pathlib import Path
 
 from utils.metrics import MAD, SSD, PRD, COS_SIM
 from utils import visualization as vs
@@ -34,26 +35,34 @@ np.random.seed(3407)
 torch.manual_seed(3407)
 
 if __name__ == "__main__":
+    project_root = Path(__file__).resolve().parent
+    default_data_dir = project_root.parent / "data"
 
     parser = argparse.ArgumentParser(description="MECGE for ECG")
     parser.add_argument("--config", type=str, default="config/MECGE.yaml") #
     parser.add_argument('--device', type=str, default='cuda:0', help='Device')
-    parser.add_argument('--n_type', type=str, default='bw', help='noise type') # 'bw' or 'em' or 'ma' or 'all' 
-    parser.add_argument('--test', action='store_true') # 'bw' or 'em' or 'ma' or 'all' 
+    parser.add_argument('--n_type', type=str, default='bw', help='noise type') # 'bw' or 'em' or 'ma' or 'all'
+    parser.add_argument('--test', action='store_true') # 'bw' or 'em' or 'ma' or 'all'
+    parser.add_argument('--data_dir', type=str, default=str(default_data_dir), help='Directory containing dataset_{n_type}_nv{1,2}.pkl files')
     args = parser.parse_args()
 
     makedirs('results', exist_ok=True)
+    makedirs('logs', exist_ok=True)
+    makedirs('model_weight', exist_ok=True)
     with open(args.config, "r") as f:
         config = yaml.safe_load(f)
         config_name = args.config.split('/')[-1].split('.')[0]
 
     noise_versions = [1, 2]
     n_type = args.n_type
+    data_dir = Path(args.data_dir)
     for nv in noise_versions:
         # Data_Preparation() function assumes that QT database and Noise Stress Test Database are uncompresed
         # inside a folder called data
-        
-        Dataset_file = f'data/dataset_{n_type}_nv{nv}.pkl'
+
+        Dataset_file = data_dir / f'dataset_{n_type}_nv{nv}.pkl'
+        if not Dataset_file.is_file():
+            raise FileNotFoundError(f"Dataset file not found: {Dataset_file}")
         with open(Dataset_file, 'rb') as input:
             Dataset = pickle.load(input)
 
